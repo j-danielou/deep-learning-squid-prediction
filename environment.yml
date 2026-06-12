@@ -1,5 +1,6 @@
-name: D:\CondaEnvs\mon_env_spatial
+name: mon_env_spatial
 channels:
+  - conda-forge
   - defaults
 dependencies:
   - python=3.13
@@ -22,4 +23,8 @@ dependencies:
   - tensorboard-data-server
   - tensorboardx
   - optuna
-prefix: D:\CondaEnvs\mon_env_spatial
+  - pip
+  - pip:
+    - protobuf==3.20.3
+    - scipy==1.17.1
+    - tensorboard==2.20.0
