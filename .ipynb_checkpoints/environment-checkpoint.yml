@@ -1,0 +1,30 @@
+name: mon_env_spatial
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - spyder-kernels
+  - numpy
+  - netcdf4
+  - geopandas
+  - rasterio
+  - xarray
+  - plotly
+  - nbformat
+  - cartopy
+  - dask
+  - copernicusmarine
+  - pyarrow
+  - pytorch
+  - pandas
+  - seaborn
+  - regionmask
+  - tensorboard-data-server
+  - tensorboardx
+  - optuna
+  - pip
+  - pip:
+    - protobuf==3.20.3
+    - scipy==1.17.1
+    - tensorboard==2.20.0
