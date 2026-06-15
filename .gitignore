@@ -4,3 +4,4 @@ data/
 models/
 report/
 spatial_env.sif
+.ipynb_checkpoints/
