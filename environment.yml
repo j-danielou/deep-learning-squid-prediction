@@ -14,9 +14,7 @@ dependencies:
   - nbformat
   - cartopy
   - dask
-  - copernicusmarine
   - pyarrow
-  - pytorch
   - pandas
   - seaborn
   - regionmask
@@ -28,3 +26,4 @@ dependencies:
     - protobuf==3.20.3
     - scipy==1.17.1
     - tensorboard==2.20.0
+    - mlflow

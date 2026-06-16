@@ -36,7 +36,7 @@ class ConvLSTMCell(nn.Module):
         
         return h_next, c_next
 
-class SwinLSTMEncoder(nn.Module): #pas un vrai Swin, Conv2d + LSTM
+class SwinLSTMEncoder(nn.Module): 
     def __init__(self, in_channels, hidden_dim):
         super(SwinLSTMEncoder, self).__init__()
         self.hidden_dim = hidden_dim
@@ -56,8 +56,8 @@ class SwinLSTMEncoder(nn.Module): #pas un vrai Swin, Conv2d + LSTM
         b, c, t, h, w = x.size()
         device = x.device
         
-        h_t = torch.zeros(b, self.hidden_dim, h, w, device=device)
-        c_t = torch.zeros(b, self.hidden_dim, h, w, device=device)
+        h_t = torch.zeros(b, self.hidden_dim, h, w, device=device, dtype=x.dtype)
+        c_t = torch.zeros(b, self.hidden_dim, h, w, device=device, dtype=x.dtype)
         
         h_states = []
         
@@ -73,5 +73,4 @@ class SwinLSTMEncoder(nn.Module): #pas un vrai Swin, Conv2d + LSTM
             
             h_states.append(h_t)
             
-        #output shape: [Batch, Hidden, 4_semaines, Height, Width]
         return torch.stack(h_states, dim=2)

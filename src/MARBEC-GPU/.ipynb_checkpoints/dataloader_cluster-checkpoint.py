@@ -4,6 +4,7 @@ Created on Wed Jun 10 10:07:38 2026
 
 @author: jdanielou
 """
+# -*- coding: utf-8 -*-
 import xarray as xr
 import numpy as np
 import torch
@@ -20,11 +21,13 @@ class MILFisheryDataset(Dataset):
         self.files_phys = sorted(glob.glob(os.path.join(path_phys, "*.nc")))
         self.files_chl = sorted(glob.glob(os.path.join(path_chl, "*.nc")))
         
-        ds_phys = xr.open_mfdataset(self.files_phys, combine='by_coords')
-        ds_chl = xr.open_mfdataset(self.files_chl, combine='by_coords')
+        ds_phys = xr.open_mfdataset(self.files_phys, combine='by_coords', engine='h5netcdf')
+        ds_chl = xr.open_mfdataset(self.files_chl, combine='by_coords', engine='h5netcdf')
         
         self.ds = xr.merge([ds_phys, ds_chl])
         self.ds = self.ds.sel(latitude=slice(-38.0, 3.0), longitude=slice(227.0, 293.0))
+        
+        self.ds.load()
         
         self.features = features
         self.df_catch = df_catch
@@ -71,6 +74,7 @@ class MILFisheryDataset(Dataset):
             
         x_tensor = torch.tensor(np.stack(x_list), dtype=torch.float32)
         
+        #Dropout
         if self.is_train and self.gfw_idx != -1:
             if torch.rand(1).item() < 0.15: 
                 x_tensor[self.gfw_idx, ...] = 0.0

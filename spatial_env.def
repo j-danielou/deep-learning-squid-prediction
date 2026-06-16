@@ -5,5 +5,11 @@ From: continuumio/miniconda3:latest
     environment.yml /environment.yml
 
 %post
+    # Mise a jour de l'environnement de base avec les librairies standards
     /opt/conda/bin/conda env update -n base -f /environment.yml
+    
+    # Installation forcee de la version specifique CUDA de PyTorch
+    /opt/conda/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    
+    # Nettoyage du cache pour reduire la taille finale de l'image
     /opt/conda/bin/conda clean -a -y

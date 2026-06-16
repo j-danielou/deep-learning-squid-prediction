@@ -7,8 +7,6 @@ Created on Wed Jun 10 10:07:38 2026
 import xarray as xr
 import numpy as np
 import torch
-import glob
-import os
 import calendar
 from torch.utils.data import Dataset
 
@@ -16,16 +14,8 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 class MILFisheryDataset(Dataset):
-    def __init__(self, path_phys, path_chl, df_catch, features, mask_path, is_train=False):
-        self.files_phys = sorted(glob.glob(os.path.join(path_phys, "*.nc")))
-        self.files_chl = sorted(glob.glob(os.path.join(path_chl, "*.nc")))
-        
-        ds_phys = xr.open_mfdataset(self.files_phys, combine='by_coords')
-        ds_chl = xr.open_mfdataset(self.files_chl, combine='by_coords')
-        
-        self.ds = xr.merge([ds_phys, ds_chl])
-        self.ds = self.ds.sel(latitude=slice(-38.0, 3.0), longitude=slice(227.0, 293.0))
-        
+    def __init__(self, shared_ds, df_catch, features, mask_path, is_train=False):
+        self.ds = shared_ds
         self.features = features
         self.df_catch = df_catch
         self.is_train = is_train

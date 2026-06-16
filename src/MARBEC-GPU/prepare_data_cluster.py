@@ -31,7 +31,3 @@ def load_and_prepare_catch_data(csv_path):
     
     print(f"Preparation terminee. Evenements valides : {len(df_gigas)}")
     return df_gigas
-
-if __name__ == "__main__":
-    file_path = "/home/jdanielou/data/input/v1960_2026-05-05_fishing-activity-monthly-catch-1x1.csv"
-    df_catch = load_and_prepare_catch_data(file_path)
