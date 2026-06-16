@@ -5,3 +5,4 @@ models/
 report/
 spatial_env.sif
 .ipynb_checkpoints/
+__pycache__/
