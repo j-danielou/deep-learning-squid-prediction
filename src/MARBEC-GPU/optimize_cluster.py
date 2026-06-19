@@ -16,7 +16,6 @@ from optuna.samplers import TPESampler
 import pandas as pd
 import mlflow
 import xarray as xr
-
 from prepare_data_cluster import load_and_prepare_catch_data
 from dataloader_cluster import MILFisheryDataset
 from model_2heads_cluster import WeeklyMILModel
@@ -27,30 +26,27 @@ if torch.cuda.is_available():
 print(f"Appareil de calcul detecte : {device}", flush=True)
 
 BASE_DATA_DIR = "/marbec-data/Osmose-Montpellier-Vol3/data-jules/data"
-
 PATH_CSV = os.path.join(BASE_DATA_DIR, "input/v1960_2026-05-05_fishing-activity-monthly-catch-1x1.csv")
 PATH_PHYS = os.path.join(BASE_DATA_DIR, "input/phy/")
 PATH_CHL = os.path.join(BASE_DATA_DIR, "input/bio/")
 PATH_MASK = os.path.join(BASE_DATA_DIR, "input/official_mask_zee.nc")
-
 DOSSIER_MODELS = os.path.join(BASE_DATA_DIR, "output/models/")
 MLFLOW_DIR = os.path.join(BASE_DATA_DIR, "output/runs/mlflow")
 
 FEATURES = ['thetao', 'so', 'uo', 'vo', 'eke', 'sst_grad', 'so_grad', 'elevation', 'CHL', 'chl_grad', 'fishing_hours']
-
-MAX_EPOCHS = 3
+MAX_EPOCHS = 30
 BATCH_SIZE = 128
-N_TRIALS = 3
+N_TRIALS = 100
 
-DB_NAME = f"sqlite:///{os.path.join(DOSSIER_MODELS, 'optuna_ziln_study.db')}"
-BEST_MODEL_PATH = os.path.join(DOSSIER_MODELS, "meilleur_modele_optuna_ziln.pth")
-CSV_RESULTS_PATH = os.path.join(DOSSIER_MODELS, "resultats_optuna_ziln.csv")
+DB_NAME = f"sqlite:///{os.path.join(DOSSIER_MODELS, 'optuna_finale_v4.db')}"
+BEST_MODEL_PATH = os.path.join(DOSSIER_MODELS, "meilleur_modele_optuna_ziln_V4.pth")
+CSV_RESULTS_PATH = os.path.join(DOSSIER_MODELS, "resultats_optuna_ziln_V4.csv")
 
 os.makedirs(DOSSIER_MODELS, exist_ok=True)
 os.makedirs(MLFLOW_DIR, exist_ok=True)
 
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DIR}/mlflow.db")
-mlflow.set_experiment("squid_prediction_ziln")
+mlflow.set_experiment("squid_prediction_ziln_v4")
 
 print("Chargement des donnees CSV...", flush=True)
 df_all = load_and_prepare_catch_data(PATH_CSV)
@@ -76,9 +72,6 @@ print("Chargement des donnees NetCDF termine.", flush=True)
 train_ds = MILFisheryDataset(shared_ds, df_train, FEATURES, PATH_MASK, is_train=True)
 val_ds = MILFisheryDataset(shared_ds, df_val, FEATURES, PATH_MASK, is_train=False)
 
-train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
-val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
-
 class ZeroInflatedLoss(nn.Module):
     def __init__(self, alpha_reg=1.0, delta_huber=1.0):
         super(ZeroInflatedLoss, self).__init__()
@@ -89,30 +82,39 @@ class ZeroInflatedLoss(nn.Module):
     def forward(self, logit_presence, pred_abundance, y_true, w):
         is_present = (y_true > 0).float()
         loss_cls = self.bce(logit_presence, is_present)
-        
         loss_reg = self.huber(pred_abundance, y_true)
         loss_reg = loss_reg * is_present
-        
         sum_w = w.sum() + 1e-8
         final_loss_cls = (loss_cls * w).sum() / sum_w
         final_loss_reg = (loss_reg * w).sum() / sum_w
-        
         return final_loss_cls, final_loss_reg * self.alpha
 
 def objective(trial):
     lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
-    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+    weight_decay = trial.suggest_float("weight_decay", 1e-4, 1e-2, log=True)
     alpha_reg = trial.suggest_float("alpha_reg", 0.5, 5.0)
     delta_huber = trial.suggest_float("delta_huber", 0.5, 3.0)
-    hidden_dim = trial.suggest_categorical("hidden_dim", [128, 256, 512, 1024])
+    hidden_dim = trial.suggest_categorical("hidden_dim", [128, 256, 512])
+    num_conv_layers = trial.suggest_int("num_conv_layers", 2, 4)
+    num_fc_layers = trial.suggest_int("num_fc_layers", 1, 3)
+
+    current_batch_size = 64
 
     print(f"\n--- DEBUT ESSAI {trial.number} ---", flush=True)
-    print(f"Parametres : lr={lr:.2e}, wd={weight_decay:.2e}, alpha={alpha_reg:.2f}, delta={delta_huber:.2f}, dim={hidden_dim}", flush=True)
+    print(f"Arch: dim={hidden_dim}, conv={num_conv_layers}, fc={num_fc_layers} | Batch={current_batch_size}", flush=True)
 
-    model = WeeklyMILModel(in_channels=len(FEATURES), hidden_dim=hidden_dim).to(device)
+    train_loader = DataLoader(train_ds, batch_size=current_batch_size, shuffle=True, num_workers=5, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=current_batch_size, shuffle=False, num_workers=5, pin_memory=True)
+
+    model = WeeklyMILModel(
+        in_channels=len(FEATURES), 
+        hidden_dim=hidden_dim,
+        num_conv_layers=num_conv_layers,
+        num_fc_layers=num_fc_layers
+    ).to(device)
+    
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = ZeroInflatedLoss(alpha_reg=alpha_reg, delta_huber=delta_huber)
-    
     scaler = torch.amp.GradScaler('cuda')
 
     best_local_mae = float('inf')
@@ -147,7 +149,6 @@ def objective(trial):
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
                     scaler.update()
-                    
                     total_loss += loss.item()
                     total_cls += loss_cls.item()
                     total_reg += loss_reg.item()
@@ -159,6 +160,7 @@ def objective(trial):
 
             model.eval()
             running_mae = 0.0
+            running_val_loss = 0.0
             count = 0
             with torch.no_grad():
                 for x, y, w, m, t_mask in val_loader:
@@ -170,6 +172,9 @@ def objective(trial):
                     
                     with torch.amp.autocast('cuda'):
                         logit_presence, pred_abundance, _ = model(x, pixel_mask=m, time_mask=t_mask)
+                        loss_cls, loss_reg = criterion(logit_presence.squeeze(1), pred_abundance.squeeze(1), y, w)
+                        val_loss_batch = loss_cls + loss_reg
+                        
                         prob_presence = torch.sigmoid(logit_presence.squeeze(1))
                         safe_pred = torch.clamp(pred_abundance.squeeze(1), min=0.0, max=20.0)
                         pred_kg = prob_presence * torch.expm1(safe_pred)
@@ -177,15 +182,18 @@ def objective(trial):
                         
                         sum_w = w.sum()
                         if sum_w > 0:
+                            running_val_loss += val_loss_batch.item()
                             abs_error = torch.abs(pred_kg - true_kg)
                             running_mae += ((abs_error * w).sum() / sum_w).item()
                             count += 1
                         
             val_mae = running_mae / max(1, count)
+            val_loss = running_val_loss / max(1, count)
             
-            print(f"  Essai {trial.number} | Epoch {epoch+1}/{MAX_EPOCHS} | Train Loss: {train_loss:.4f} | Val MAE: {val_mae:,.0f} kg", flush=True)
+            print(f"  Essai {trial.number} | Epoch {epoch+1}/{MAX_EPOCHS} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val MAE: {val_mae:,.0f} kg", flush=True)
             
             mlflow.log_metric("train_loss", train_loss, step=epoch)
+            mlflow.log_metric("val_loss", val_loss, step=epoch)
             mlflow.log_metric("train_loss_cls", train_cls, step=epoch)
             mlflow.log_metric("train_loss_reg", train_reg, step=epoch)
             mlflow.log_metric("val_mae", val_mae, step=epoch)
@@ -207,11 +215,11 @@ def objective(trial):
 if __name__ == "__main__":
     print("Initialisation Optimisation", flush=True)
     
-    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=MAX_EPOCHS, reduction_factor=3)
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=12, interval_steps=2)
     sampler = TPESampler(seed=42)
     
     study = optuna.create_study(
-        study_name="ziln_cluster_optim", 
+        study_name="optim_finale_v4", 
         direction="minimize", 
         storage=DB_NAME, 
         load_if_exists=True,

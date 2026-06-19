@@ -7,7 +7,7 @@ Created on Wed Jun 10 10:09:14 2026
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from swin_lstm import SwinLSTMEncoder
+from swin_lstm_cluster import SwinLSTMEncoder
 
 class OceanographicTemporalPool(nn.Module):
     def __init__(self):
@@ -30,11 +30,11 @@ class OceanographicTemporalPool(nn.Module):
         return torch.cat([p1, p2, p3, p4], dim=2)
 
 class WeeklyMILModel(nn.Module):
-    def __init__(self, in_channels, hidden_dim):
+    def __init__(self, in_channels, hidden_dim, num_conv_layers=2, num_fc_layers=1):
         super(WeeklyMILModel, self).__init__()
 
         self.temporal_pool = OceanographicTemporalPool()
-        self.encoder = SwinLSTMEncoder(in_channels=in_channels, hidden_dim=hidden_dim)
+        self.encoder = SwinLSTMEncoder(in_channels=in_channels, hidden_dim=hidden_dim, num_conv_layers=num_conv_layers)
         
         self.self_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4, batch_first=True)
         self.norm1 = nn.LayerNorm(hidden_dim)
@@ -45,8 +45,20 @@ class WeeklyMILModel(nn.Module):
             nn.Linear(hidden_dim // 2, 1)
         )
         
-        self.head_presence = nn.Linear(hidden_dim, 1)
-        self.head_abundance = nn.Linear(hidden_dim, 1)
+        presence_layers = []
+        abundance_layers = []
+        curr_dim = hidden_dim
+        
+        for _ in range(num_fc_layers - 1):
+            presence_layers.extend([nn.Linear(curr_dim, curr_dim // 2), nn.GELU(), nn.Dropout(0.2)])
+            abundance_layers.extend([nn.Linear(curr_dim, curr_dim // 2), nn.GELU(), nn.Dropout(0.2)])
+            curr_dim = curr_dim // 2
+            
+        presence_layers.append(nn.Linear(curr_dim, 1))
+        abundance_layers.append(nn.Linear(curr_dim, 1))
+        
+        self.head_presence = nn.Sequential(*presence_layers)
+        self.head_abundance = nn.Sequential(*abundance_layers)
 
     def forward(self, x, pixel_mask=None, time_mask=None):
         weekly_x = self.temporal_pool(x, time_mask)
@@ -73,7 +85,7 @@ class WeeklyMILModel(nn.Module):
         att_logits = self.attention_pool(x_seq)
         
         if key_padding_mask is not None:
-            att_logits = att_logits.masked_fill(key_padding_mask.unsqueeze(-1), -1e9)
+            att_logits = att_logits.masked_fill(key_padding_mask.unsqueeze(-1), -10000.0)
             
         att_weights = torch.softmax(att_logits, dim=1)
         context_vector = torch.sum(x_seq * att_weights, dim=1)

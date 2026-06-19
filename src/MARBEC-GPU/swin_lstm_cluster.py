@@ -37,21 +37,23 @@ class ConvLSTMCell(nn.Module):
         return h_next, c_next
 
 class SwinLSTMEncoder(nn.Module): 
-    def __init__(self, in_channels, hidden_dim):
+    def __init__(self, in_channels, hidden_dim, num_conv_layers=2):
         super(SwinLSTMEncoder, self).__init__()
         self.hidden_dim = hidden_dim
         
-        self.spatial_feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_dim // 2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(hidden_dim // 2),
-            nn.GELU(),
-            nn.Conv2d(hidden_dim // 2, hidden_dim, kernel_size=3, padding=1),
-            nn.BatchNorm2d(hidden_dim),
-            nn.GELU()
-        )
+        layers = []
+        current_channels = in_channels
         
+        for i in range(num_conv_layers):
+            out_channels = hidden_dim // 2 if i < num_conv_layers - 1 else hidden_dim
+            layers.append(nn.Conv2d(current_channels, out_channels, kernel_size=3, padding=1))
+            layers.append(nn.BatchNorm2d(out_channels))
+            layers.append(nn.GELU())
+            current_channels = out_channels
+            
+        self.spatial_feature_extractor = nn.Sequential(*layers)
         self.lstm_cell = ConvLSTMCell(in_channels=hidden_dim, hidden_dim=hidden_dim)
-
+        
     def forward(self, x, time_mask=None):
         b, c, t, h, w = x.size()
         device = x.device
