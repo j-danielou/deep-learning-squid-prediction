@@ -5,6 +5,7 @@ Created on Wed Jun  3 10:09:47 2026
 @author: jdanielou
 """
 import os
+import sys
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,8 +16,13 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from prepare_data import load_and_prepare_catch_data
 from dataloader import MILFisheryDataset
 
-# IMPORT MODIFIÉ : On importe le modèle depuis model_2heads.py
-from model_2heads import WeeklyMILModel
+dossier_actuel = os.path.dirname(os.path.abspath(__file__))
+dossier_parent = os.path.dirname(dossier_actuel)
+dossier_marbec = os.path.join(dossier_parent, "MARBEC-GPU")
+if dossier_marbec not in sys.path:
+    sys.path.insert(0, dossier_marbec)
+    
+from model_2heads_cluster import WeeklyMILModel
 
 #conf
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,7 +40,7 @@ FEATURES = ['thetao', 'so', 'uo', 'vo', 'eke', 'sst_grad', 'so_grad', 'elevation
 MODELS_TO_EVALUATE = {
     #"Baseline(Conv3d + Transformers)": "D:/deep-learning-squid-prediction/models/model_baseline_ancien.pth",
     #"Hybride TransMIL(Conv3d + TransMIL)": "D:/deep-learning-squid-prediction/models/model_conv3d_transmil_hybride_20260522_203142_mae332721.pth"
-    "SwinLSTM TransMIL(SwinLSTM + TransMIL)": "D:/deep-learning-squid-prediction/models/model_swinlstm_transmil_hybride_20260603_060517_mae306121.pth"
+    "SwinLSTM TransMIL(SwinLSTM + TransMIL)": "D:/deep-learning-squid-prediction/models/meilleur_modele_optuna_ziln_V4.pth"
 }
 
 #dataloading
@@ -52,7 +58,12 @@ def evaluate_model(model_path, model_name):
     print(f"\n--- Evaluation de : {model_name} ---")
     
     #initialisation
-    model = WeeklyMILModel(in_channels=len(FEATURES), hidden_dim=512).to(device)
+    model = WeeklyMILModel(
+        in_channels=len(FEATURES), 
+        hidden_dim=512,
+        num_conv_layers=3,
+        num_fc_layers=2
+    ).to(device)
     
     try:
         model.load_state_dict(torch.load(model_path, map_location=device))
@@ -151,6 +162,6 @@ if len(results) > 0:
         ax.legend(loc='lower right')
         
     plt.tight_layout()
-    plt.savefig(os.path.join("D:/deep-learning-squid-prediction/data", "comparaison_modeles_SwinLSTM_TransMIL_2heads.png"), dpi=300)
+    plt.savefig(os.path.join("D:/deep-learning-squid-prediction/data", "comparaison_modeles_SwinLSTM_TransMIL_2heads_optuna.png"), dpi=300)
     print("\nGraphique de comparaison sauvegarde")
     plt.show()

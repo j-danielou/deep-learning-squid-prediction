@@ -6,3 +6,5 @@ report/
 spatial_env.sif
 .ipynb_checkpoints/
 __pycache__/
+output/
+*untitled*
